@@ -375,14 +375,21 @@ def _sarif_report(findings):
     ]
     results = []
     for finding in findings:
-        source = Path(finding.source).as_posix()
+        source_path = Path(finding.source)
+        if source_path.is_absolute():
+            artifact_location = {"uri": source_path.as_uri()}
+        else:
+            artifact_location = {
+                "uri": quote(source_path.as_posix(), safe="/:@-._~"),
+                "uriBaseId": "%SRCROOT%",
+            }
         result = {
             "ruleId": finding.code,
             "level": "warning",
             "message": {"text": finding.message},
             "locations": [{
                 "physicalLocation": {
-                    "artifactLocation": {"uri": quote(source, safe="/:@-._~")}
+                    "artifactLocation": artifact_location
                 }
             }],
         }
@@ -392,6 +399,9 @@ def _sarif_report(findings):
         "version": "2.1.0",
         "runs": [{
             "tool": {"driver": {"name": "permwhy", "rules": rules}},
+            "originalUriBaseIds": {
+                "%SRCROOT%": {"uri": Path.cwd().as_uri() + "/"}
+            },
             "results": results,
         }],
     }

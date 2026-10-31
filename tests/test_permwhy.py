@@ -183,10 +183,20 @@ class CliTest(unittest.TestCase):
         self.assertEqual(finding["level"], "warning")
         self.assertIn("Blanket Bash allow", finding["message"]["text"])
         self.assertTrue(
-            finding["locations"][0]["physicalLocation"]["artifactLocation"]["uri"].endswith(
-                "/settings.json"
+            finding["locations"][0]["physicalLocation"]["artifactLocation"]["uri"].startswith(
+                "file:///"
             )
         )
+
+    def test_sarif_resolves_relative_paths_from_source_root(self):
+        finding = permwhy.Finding("PW003", "Bash(*)", "examples/settings.json", "unsafe allow")
+        report = permwhy._sarif_report([finding])
+        run = report["runs"][0]
+        location = run["results"][0]["locations"][0]["physicalLocation"]["artifactLocation"]
+
+        self.assertEqual(location["uri"], "examples/settings.json")
+        self.assertEqual(location["uriBaseId"], "%SRCROOT%")
+        self.assertTrue(run["originalUriBaseIds"]["%SRCROOT%"]["uri"].startswith("file:///"))
 
     def test_lint_sarif_is_valid_with_no_findings(self):
         code, output = self.run_cli('{"permissions":{"allow":["Bash(ls)"]}}', "--sarif", "lint")
