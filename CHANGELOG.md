@@ -8,6 +8,7 @@ All notable changes are documented here, in [Keep a Changelog](https://keepachan
 - README covers common questions
 
 ### Added
+- `lint` can emit SARIF 2.1.0 reports with stable descriptors for all finding codes.
 - `explain` shows the permission decision for each subcommand.
 - `lint` reports nine kinds of ineffective or risky rule.
 - `explaining-permissions` skill and plugin manifest.

@@ -46,7 +46,9 @@ Try both commands on the rules in `examples/settings.json`.
     PW007 Bash(aws s3 ls) (examples/settings.json)
       Shadowed by deny rule Bash(aws *). An allow rule can't carve an exception out of a deny rule.
 
-`lint` exits 1 when it has findings, so it can run in CI. Add `--json` before the subcommand for machine-readable output. Without `--settings`, it reads `~/.claude/settings.json`, `.claude/settings.json` and `.claude/settings.local.json`.
+`lint` exits 1 when it has findings, so it can run in CI. Add `--json` before the subcommand for JSON output, or `--sarif` before `lint` for a [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/os/sarif-v2.1.0-os.html) report suitable for code-scanning consumers. The SARIF report includes descriptors for all nine `PWnnn` rules and points each result to its settings file. Without `--settings`, it reads `~/.claude/settings.json`, `.claude/settings.json` and `.claude/settings.local.json`.
+
+    $ python3 plugin/scripts/permwhy.py --settings examples/settings.json --sarif lint > permwhy.sarif
 
 | Code | Finding |
 |---|---|
