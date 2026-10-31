@@ -66,10 +66,6 @@ Contributions are welcome, from people and from people working with AI agents. S
 - Support `PowerShell(...)` rules
 - Add a plugin icon
 
-## Pro
-
-[Get notified about Pro]({{WAITLIST_URL}})
-
 ## AI disclosure
 
 This project was largely generated with Claude Code and reviewed by its maintainer.
