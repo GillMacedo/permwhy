@@ -9,5 +9,6 @@
   "homepage": "https://github.com/GillMacedo/permwhy",
   "repository": "https://github.com/GillMacedo/permwhy",
   "license": "MIT",
-  "keywords": ["permissions", "security", "settings", "linter"]
+  "keywords": ["permissions", "security", "settings", "linter"],
+  "icon": "./permwhy-icon.svg"
 }

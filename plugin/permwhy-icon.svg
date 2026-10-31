@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <rect width="64" height="64" fill="#4A90E2"/>
+  <circle cx="32" cy="32" r="28" fill="#FFFFFF"/>
+  <text x="32" y="38" font-family="Verdana" font-size="22" text-anchor="middle" fill="#1A73E8">P</text>
+  <text x="32" y="44" font-family="Verdana" font-size="11" text-anchor="middle" fill="#666666">permwhy</text>
+</svg>
