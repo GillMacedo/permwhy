@@ -1,8 +1,16 @@
-# permwhy
+# permwhy: debug Claude Code permission prompts
 
-**Find out why Claude Code asked for permission, and which of your rules don't do what you think.**
+[![CI](https://github.com/GillMacedo/permwhy/actions/workflows/ci.yml/badge.svg)](https://github.com/GillMacedo/permwhy/actions/workflows/ci.yml) [![MIT license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+**Find out why Claude Code asked for permission, and lint the allow and deny rules in your `settings.json`.**
 
 Claude Code splits compound commands, strips some wrappers, and checks deny, then ask, then allow. When a prompt appears anyway, the reason is hard to see, and a long allow list can hide rules that never apply. `permwhy` shows the decision for each subcommand and flags rules that are ineffective or risky. It runs locally, needs no network, and has no dependencies beyond Python 3.10.
+
+## What you can ask Claude
+
+- "Why did you ask permission for that?"
+- "Why doesn't my allow rule work?"
+- "Audit my Claude Code permission rules."
 
 ## Install
 
@@ -55,6 +63,12 @@ Try both commands on the rules in `examples/settings.json`.
 ## Limits
 
 `permwhy` follows [Claude Code's documented permission behavior](https://code.claude.com/docs/en/permissions), but it is a separate approximation, so Claude Code has the final say. It doesn't know Claude Code's built-in read-only list, managed settings, or auto mode's classifier decisions. Permission rules also aren't a security boundary: use a sandbox for that.
+
+## FAQ
+
+**Why does Claude Code keep asking for permission?** Often one part of a compound command has no matching rule. `permwhy explain` shows the decision for each part.
+
+**How do I check my Claude Code permissions in CI?** Run `permwhy.py lint`. It exits 1 on findings.
 
 ## Contributing
 

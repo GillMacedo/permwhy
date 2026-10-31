@@ -4,6 +4,9 @@ All notable changes are documented here, in [Keep a Changelog](https://keepachan
 
 ## [Unreleased]
 
+### Changed
+- README covers common questions
+
 ### Added
 - `explain` shows the permission decision for each subcommand.
 - `lint` reports nine kinds of ineffective or risky rule.
