@@ -16,7 +16,7 @@ Then ask Claude "why did you ask permission for that?" or "audit my permission r
 Or run the script directly:
 
     git clone https://github.com/GillMacedo/permwhy
-    python3 permwhy/scripts/permwhy.py lint
+    python3 permwhy/plugin/scripts/permwhy.py lint
 
 ## Usage
 
@@ -24,7 +24,7 @@ Try both commands on the rules in `examples/settings.json`.
 
 **Why did this prompt?**
 
-    $ python3 scripts/permwhy.py --settings examples/settings.json explain 'git status && npm test'
+    $ python3 plugin/scripts/permwhy.py --settings examples/settings.json explain 'git status && npm test'
     Decision: PROMPT
     Why: No allow rule matches: `npm test`. Claude Code may still approve read-only commands without a rule.
       allow    git status  <- Bash(git *) in examples/settings.json
@@ -32,7 +32,7 @@ Try both commands on the rules in `examples/settings.json`.
 
 **Which rules have problems?**
 
-    $ python3 scripts/permwhy.py --settings examples/settings.json lint
+    $ python3 plugin/scripts/permwhy.py --settings examples/settings.json lint
     PW004 Bash(python *) (examples/settings.json)
       Wildcarded interpreter: allows any code to run and is dropped when entering auto mode.
     PW007 Bash(aws s3 ls) (examples/settings.json)

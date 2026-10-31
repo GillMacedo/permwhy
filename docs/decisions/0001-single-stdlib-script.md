@@ -1,6 +1,6 @@
 # 0001: One standard-library Python script
 
-**Decision:** all logic is in `scripts/permwhy.py`, using only Python's standard library.
+**Decision:** all logic is in `plugin/scripts/permwhy.py`, using only Python's standard library.
 
 **Why:** a plugin should work right after install, with no dependency step or supply chain to audit. The docs' skill examples use standard-library Python.
 

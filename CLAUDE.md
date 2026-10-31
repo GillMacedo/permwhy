@@ -3,7 +3,7 @@
 Claude Code plugin that explains Bash permission decisions and lints permission rules.
 
 ## Architecture
-`scripts/permwhy.py` holds all the logic: split the command, match rules, decide, lint. `skills/explaining-permissions/SKILL.md` tells Claude when and how to run it. See `docs/architecture.md`.
+`plugin/scripts/permwhy.py` holds all the logic: split the command, match rules, decide, lint. `plugin/skills/explaining-permissions/SKILL.md` tells Claude when and how to run it. See `docs/architecture.md`.
 
 ## Commands
 - `make test`: unit tests and project checks

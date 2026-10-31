@@ -8,7 +8,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "plugin" / "scripts"))
 
 import permwhy  # noqa: E402
 
@@ -173,7 +173,7 @@ class CliTest(unittest.TestCase):
 
 class ProjectTest(unittest.TestCase):
     def test_skill_follows_published_limits(self):
-        text = (ROOT / "skills" / "explaining-permissions" / "SKILL.md").read_text(encoding="utf-8")
+        text = (ROOT / "plugin" / "skills" / "explaining-permissions" / "SKILL.md").read_text(encoding="utf-8")
         match = re.match(r"---\n(.*?)\n---\n(.*)", text, re.DOTALL)
         self.assertIsNotNone(match)
         front = dict(line.split(": ", 1) for line in match.group(1).splitlines())
