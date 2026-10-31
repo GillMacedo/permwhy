@@ -30,7 +30,7 @@ Try both commands on the rules in `examples/settings.json`.
       allow    git status  <- Bash(git *) in examples/settings.json
       no rule  npm test
 
-**Which rules have problems?**
+**Which rules have problems?** (excerpt)
 
     $ python3 plugin/scripts/permwhy.py --settings examples/settings.json lint
     PW004 Bash(python *) (examples/settings.json)
