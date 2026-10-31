@@ -13,6 +13,7 @@ import shlex
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from urllib.parse import quote
 
 SEPARATORS = ("&&", "||", "|&", ";", "|", "&", "\n")
 LEADING_KEYWORDS = {"if", "then", "else", "elif", "while", "until", "do", "!", "{"}
@@ -56,6 +57,19 @@ class Finding:
     rule: str
     source: str
     message: str
+
+
+SARIF_RULES = {
+    "PW001": "Invalid permission rule",
+    "PW002": "Duplicate permission rule",
+    "PW003": "Blanket Bash allow",
+    "PW004": "Wildcarded interpreter allow",
+    "PW005": "Wildcarded package-manager run allow",
+    "PW006": "Wildcarded command runner allow",
+    "PW007": "Allow rule shadowed by a deny rule",
+    "PW008": "Deny or ask rule matches command text only",
+    "PW009": "Fragile URL permission pattern",
+}
 
 
 def split_command(command):
@@ -353,15 +367,50 @@ def _print_explanation(result):
         print(f"  {item.decision:8} {item.command}{where}{suffix}")
 
 
+def _sarif_report(findings):
+    """Return lint findings as a SARIF 2.1.0 log."""
+    rules = [
+        {"id": code, "shortDescription": {"text": description}}
+        for code, description in SARIF_RULES.items()
+    ]
+    results = []
+    for finding in findings:
+        source = Path(finding.source).as_posix()
+        result = {
+            "ruleId": finding.code,
+            "level": "warning",
+            "message": {"text": finding.message},
+            "locations": [{
+                "physicalLocation": {
+                    "artifactLocation": {"uri": quote(source, safe="/:@-._~")}
+                }
+            }],
+        }
+        results.append(result)
+    return {
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [{
+            "tool": {"driver": {"name": "permwhy", "rules": rules}},
+            "results": results,
+        }],
+    }
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="permwhy", description="Explain and lint Claude Code Bash permission rules.")
     parser.add_argument("--settings", action="append", help="settings file to read (repeatable); defaults to the user and project files")
-    parser.add_argument("--json", action="store_true", help="print JSON")
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument("--json", action="store_true", help="print JSON")
+    output.add_argument("--sarif", action="store_true", help="print SARIF 2.1.0 (lint only)")
     commands = parser.add_subparsers(dest="action", required=True)
     explain_parser = commands.add_parser("explain", help="explain the decision for a command")
     explain_parser.add_argument("shell_command")
     commands.add_parser("lint", help="find ineffective or risky rules")
     args = parser.parse_args(argv)
+
+    if args.sarif and args.action != "lint":
+        parser.error("--sarif is only available with lint")
 
     rules, errors = load_rules(args.settings or default_settings_paths())
     for error in errors:
@@ -378,6 +427,9 @@ def main(argv=None):
         return 0
 
     findings = lint(rules)
+    if args.sarif:
+        print(json.dumps(_sarif_report(findings), indent=2))
+        return 1 if findings else 0
     if args.json:
         print(json.dumps([asdict(f) for f in findings], indent=2))
     else:

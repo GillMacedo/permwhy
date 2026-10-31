@@ -167,6 +167,40 @@ class CliTest(unittest.TestCase):
         self.assertEqual(self.run_cli('{"permissions":{"allow":["Bash(*)"]}}', "lint")[0], 1)
         self.assertEqual(self.run_cli('{"permissions":{"allow":["Bash(ls)"]}}', "lint")[0], 0)
 
+    def test_lint_sarif_maps_findings_to_rules_and_source_locations(self):
+        code, output = self.run_cli('{"permissions":{"allow":["Bash(*)"]}}', "--sarif", "lint")
+        report = json.loads(output)
+
+        self.assertEqual(code, 1)
+        self.assertEqual(report["version"], "2.1.0")
+        self.assertEqual(report["$schema"], "https://json.schemastore.org/sarif-2.1.0.json")
+        run = report["runs"][0]
+        self.assertEqual(run["tool"]["driver"]["name"], "permwhy")
+        rules_by_id = {rule["id"]: rule for rule in run["tool"]["driver"]["rules"]}
+        self.assertEqual(set(rules_by_id), set(permwhy.SARIF_RULES))
+        finding = run["results"][0]
+        self.assertEqual(finding["ruleId"], "PW003")
+        self.assertEqual(finding["level"], "warning")
+        self.assertIn("Blanket Bash allow", finding["message"]["text"])
+        self.assertTrue(
+            finding["locations"][0]["physicalLocation"]["artifactLocation"]["uri"].endswith(
+                "/settings.json"
+            )
+        )
+
+    def test_lint_sarif_is_valid_with_no_findings(self):
+        code, output = self.run_cli('{"permissions":{"allow":["Bash(ls)"]}}', "--sarif", "lint")
+        report = json.loads(output)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(report["runs"][0]["results"], [])
+        self.assertEqual(len(report["runs"][0]["tool"]["driver"]["rules"]), 9)
+
+    def test_sarif_is_lint_only(self):
+        with self.assertRaises(SystemExit) as error:
+            self.run_cli('{"permissions":{}}', "--sarif", "explain", "ls")
+        self.assertEqual(error.exception.code, 2)
+
     def test_broken_settings_file(self):
         self.assertEqual(self.run_cli("{oops", "lint")[0], 2)
 
