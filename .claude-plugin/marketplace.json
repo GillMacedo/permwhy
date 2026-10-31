@@ -1,0 +1,14 @@
+{
+  "name": "permwhy-marketplace",
+  "description": "Marketplace for permwhy, which explains Claude Code permission decisions.",
+  "owner": {
+    "name": "Giulliano Macedo"
+  },
+  "plugins": [
+    {
+      "name": "permwhy",
+      "source": "./",
+      "description": "Explains why Claude Code prompted for a Bash command and finds ineffective permission rules."
+    }
+  ]
+}

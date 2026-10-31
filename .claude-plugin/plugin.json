@@ -1,0 +1,13 @@
+{
+  "name": "permwhy",
+  "version": "0.1.0",
+  "description": "Explains why Claude Code prompted for a Bash command and finds ineffective permission rules.",
+  "author": {
+    "name": "Giulliano Macedo",
+    "url": "https://github.com/GillMacedo"
+  },
+  "homepage": "https://github.com/GillMacedo/permwhy",
+  "repository": "https://github.com/GillMacedo/permwhy",
+  "license": "MIT",
+  "keywords": ["permissions", "security", "settings", "linter"]
+}

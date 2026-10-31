@@ -1,0 +1,32 @@
+[
+  {
+    "skills": ["explaining-permissions"],
+    "query": "Why did you ask permission for `git status && npm test`? I allowed git.",
+    "files": ["examples/settings.json"],
+    "expected_behavior": [
+      "Runs permwhy.py explain with the exact command",
+      "Identifies npm test as the subcommand with no allow rule",
+      "Suggests a narrow rule such as Bash(npm test)"
+    ]
+  },
+  {
+    "skills": ["explaining-permissions"],
+    "query": "Audit my Claude Code permission settings.",
+    "files": ["examples/settings.json"],
+    "expected_behavior": [
+      "Runs permwhy.py lint",
+      "Reports the blanket or interpreter allow rules first",
+      "Asks before changing any settings file"
+    ]
+  },
+  {
+    "skills": ["explaining-permissions"],
+    "query": "I denied Bash(rm *), so Claude can never delete files, right?",
+    "files": ["examples/settings.json"],
+    "expected_behavior": [
+      "Says no, because rules match command text",
+      "Gives an invocation the rule misses, such as /bin/rm",
+      "Recommends a sandbox for a real boundary"
+    ]
+  }
+]

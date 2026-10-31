@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(python *)",
+      "Bash(aws s3 ls)",
+      "Bash(curl http://github.com/ *)"
+    ],
+    "ask": [
+      "Bash(git clean *)"
+    ],
+    "deny": [
+      "Bash(aws *)",
+      "Bash(rm *)"
+    ]
+  }
+}

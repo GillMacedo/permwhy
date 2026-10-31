@@ -1,0 +1,1 @@
+Add a lint finding for: $ARGUMENTS. Use the next unused `PWnnn` code, add it to `lint` in `scripts/permwhy.py`, add a test, add it to the README table, and link the Claude Code doc behind it in the pull request.
