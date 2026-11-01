@@ -4,6 +4,8 @@ All notable changes are documented here, in [Keep a Changelog](https://keepachan
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-01
+
 ### Changed
 - Contributing guide and PR template state the PR rules
 - README covers common questions
