@@ -50,17 +50,17 @@ Try both commands on the rules in `examples/settings.json`.
 
     $ python3 plugin/scripts/permwhy.py --settings examples/settings.json --sarif lint > permwhy.sarif
 
-| Code | Finding |
-|---|---|
-| PW001 | Not a valid rule |
-| PW002 | Duplicate rule |
-| PW003 | Blanket Bash allow |
-| PW004 | Wildcarded interpreter |
-| PW005 | Wildcarded package-manager run |
-| PW006 | Runner that matches whatever runs inside it |
-| PW007 | Allow rule shadowed by a deny rule |
+| Code  | Finding                                         |
+| ----- | ----------------------------------------------- |
+| PW001 | Not a valid rule                                |
+| PW002 | Duplicate rule                                  |
+| PW003 | Blanket Bash allow                              |
+| PW004 | Wildcarded interpreter                          |
+| PW005 | Wildcarded package-manager run                  |
+| PW006 | Runner that matches whatever runs inside it     |
+| PW007 | Allow rule shadowed by a deny rule              |
 | PW008 | Deny or ask rule that only matches command text |
-| PW009 | Fragile URL pattern |
+| PW009 | Fragile URL pattern                             |
 
 ## Limits
 
@@ -76,7 +76,6 @@ Try both commands on the rules in `examples/settings.json`.
 
 Contributions are welcome, from people and from people working with AI agents. See [CONTRIBUTING.md](CONTRIBUTING.md). Good first issues:
 
-- Handle `FOO=bar command` environment prefixes
 - Explain `Read` and `Edit` rules as well as `Bash`
 - Add SARIF output so `lint` can report in GitHub code scanning
 - Support `PowerShell(...)` rules
