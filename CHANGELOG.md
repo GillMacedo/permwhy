@@ -5,6 +5,7 @@ All notable changes are documented here, in [Keep a Changelog](https://keepachan
 ## [Unreleased]
 
 ### Changed
+- Contributing guide and PR template state the PR rules
 - README covers common questions
 
 ### Added
