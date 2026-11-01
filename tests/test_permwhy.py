@@ -7,6 +7,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "plugin" / "scripts"))
 
@@ -69,6 +70,51 @@ class WrapperTest(unittest.TestCase):
         self.assertEqual(permwhy.strip_wrappers("npx rm -rf x"), "npx rm -rf x")
 
 
+    def test_safe_env_prefix_is_stripped(self):
+            cases = {
+            "NODE_ENV=test npm test": "npm test",
+            "NODE_ENV=test GOARCH=arm64 npm test": "npm test",
+            'NODE_ENV="a b" npm test': "npm test",
+            "NODE_ENV=test nohup npm test": "npm test",
+        }
+            for given, want in cases.items():
+                self.assertEqual(permwhy.strip_wrappers(given), want, given)
+
+    def test_other_env_prefix_is_kept_for_allow(self):
+        for command in (
+            "FOO=bar npm test",
+            "NODE_ENV=$(whoami) npm test",  # dynamic value
+            "NODE_ENV=`whoami` npm test",
+            "NODE_ENV=test",  # bare assignment
+            "npm test --flag=x",
+            "--flag=x npm test",
+        ):
+            self.assertEqual(permwhy.strip_wrappers(command), command, command)
+            
+    def test_env_after_wrapper_is_not_a_prefix(self):
+            # nohup is stripped, but an assignment after it is not a prefix any more
+            self.assertEqual(
+                permwhy.strip_wrappers("nohup NODE_ENV=test npm test"),
+                "NODE_ENV=test npm test",
+            )
+
+    def test_env_all_strips_any_assignment(self):
+        cases = {
+            "FOO=$HOME rm x": "rm x",
+            "FOO=$(whoami) rm x": "rm x",
+            "FOO=bar npm test": "npm test",
+            "A=1 B=2 npm test": "npm test",
+            "FOO=bar nohup npm test": "npm test",
+            "FOO=bar": "FOO=bar",
+        }
+        for given, want in cases.items():
+            self.assertEqual(permwhy.strip_wrappers(given, env="all"), want, given)
+
+    def test_env_none_keeps_prefix(self):
+        command = "NODE_ENV=test npm test"
+        self.assertEqual(permwhy.strip_wrappers(command, env="none"), command)
+
+
 class MatchTest(unittest.TestCase):
     def test_word_boundary(self):
         self.assertTrue(permwhy.pattern_matches("ls *", "ls -la"))
@@ -113,6 +159,28 @@ class ExplainTest(unittest.TestCase):
 
     def test_wrapper_is_stripped_before_matching(self):
         self.assertEqual(permwhy.explain("timeout 30 npm test", rules(allow=["Bash(npm test)"])).decision, "allow")
+
+
+    def test_allow_matches_past_safe_env_prefix(self):
+        result = permwhy.explain("NODE_ENV=test npm test", rules(allow=["Bash(npm test *)"]))
+        self.assertEqual(result.decision, "allow")
+
+    def test_allow_does_not_match_past_other_env_prefix(self):
+        result = permwhy.explain("FOO=bar npm test", rules(allow=["Bash(npm test *)"]))
+        self.assertEqual(result.decision, "prompt")
+
+    def test_deny_matches_past_any_env_prefix(self):
+        deny = rules(deny=["Bash(rm *)"])
+        self.assertEqual(permwhy.explain("FOO=bar rm -rf tmp/", deny).decision, "deny")
+        self.assertEqual(permwhy.explain('echo "$(FOO=bar rm x)"', deny).decision, "deny")
+        
+    def test_deny_matches_past_env_prefix_with_expanded_value(self):
+        deny = rules(deny=["Bash(rm *)"])
+        self.assertEqual(permwhy.explain("FOO=$(whoami) rm -rf x", deny).decision, "deny")
+
+    def test_ask_matches_past_any_env_prefix_in_chain(self):
+        result = permwhy.explain("FOO=bar git push && npm test", rules(ask=["Bash(git push *)"]))
+        self.assertEqual(result.decision, "ask")
 
     def test_non_bash_rules_are_ignored(self):
         self.assertEqual(permwhy.explain("ls", rules(allow=["Read(./*)"])).decision, "prompt")

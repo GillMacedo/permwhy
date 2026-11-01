@@ -24,6 +24,11 @@ INTERPRETERS = {"python", "python3", "node", "ruby", "perl", "bash", "sh", "zsh"
 RUNNERS = ("npx", "docker exec", "docker run", "devbox run", "uv run", "pnpm dlx", "uvx")
 PACKAGE_RUNS = ("npm run", "pnpm run", "yarn run", "bun run", "make")
 RULE_PATTERN = re.compile(r"^([A-Za-z][A-Za-z0-9_]*)(?:\((.*)\))?$", re.DOTALL)
+ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+# Claude Code does not publish the full list of "known-safe" variables.
+# These are the ones its docs name in examples; extend only with evidence.
+SAFE_ENV_VARS = frozenset({"NODE_ENV", "LANG", "NO_COLOR", "GOARCH"})
+RAW_WORD = re.compile(r"(?:[^\s'\"]+|'[^']*'|\"(?:[^\"\\]|\\.)*\")+")
 
 
 @dataclass
@@ -189,7 +194,29 @@ def _normalize(subcommand):
     return strip_wrappers(" ".join(words))
 
 
-def strip_wrappers(command):
+def _strip_env_prefix(command, env):
+    """Drop leading NAME=value words. env: "safe" (allow rules), "all" (deny/ask), "none"."""
+    if env == "none":
+        return command
+    count = 0
+    for word in RAW_WORD.findall(command):
+        match = ENV_ASSIGNMENT.match(word)
+        if not match:
+            break
+        name, value = word[: match.end() - 1], word[match.end() :]
+        if env == "safe" and any(char in value for char in "$`("):
+            break  # allow side: a dynamic value can't be judged statically
+        if env == "safe" and name not in SAFE_ENV_VARS:
+            break
+        count += 1
+    if count == 0:
+        return command
+    rest = _drop_words(command, count).strip()
+    return rest or command  # a bare assignment stays as written
+
+
+def strip_wrappers(command, env="safe"):
+    command = _strip_env_prefix(command, env)
     while True:
         try:
             words = shlex.split(command)
@@ -292,9 +319,10 @@ def explain(command, rules):
     subcommands = []
     for text, is_nested in [(c, False) for c in top] + [(c, True) for c in nested]:
         item = Subcommand(text, nested=is_nested)
+        strict = strip_wrappers(text, env="all")  # deny/ask see past any env prefix
         # Docs: deny, then ask, then allow. Rule specificity doesn't change the order.
         for kind, label in (("deny", "deny"), ("ask", "ask"), ("allow", "allow")):
-            rule = _first_match(rules, kind, text)
+            rule = _first_match(rules, kind, strict if kind != "allow" else text)
             if rule:
                 item.decision, item.rule, item.source = label, rule.text, rule.source
                 break
