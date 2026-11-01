@@ -21,4 +21,4 @@ Claude Code plugin that explains Bash permission decisions and lints permission 
 - Don't claim this is a security boundary or that it matches Claude Code exactly.
 
 ## Definition of done
-`make test` and `make lint` pass, and `CHANGELOG.md`, `ROADMAP.md` and docs are updated when relevant.
+`make test` and `make lint` pass, and `ROADMAP.md` and docs are updated when relevant.
