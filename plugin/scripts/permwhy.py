@@ -26,7 +26,7 @@ RULE_PATTERN = re.compile(r"^([A-Za-z][A-Za-z0-9_]*)(?:\((.*)\))?$", re.DOTALL)
 ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 # Claude Code does not publish the full list of "known-safe" variables.
 # These are the ones its docs name in examples; extend only with evidence.
-SAFE_ENV_VARS = frozenset({"NODE_ENV", "LANG", "NO_COLOR", "GOARCH"})
+SAFE_ENV_VARS = frozenset({"NODE_ENV", "LANG", "NO_COLOR"})
 RAW_WORD = re.compile(r"(?:[^\s'\"]+|'[^']*'|\"(?:[^\"\\]|\\.)*\")+")
 
 

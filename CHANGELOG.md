@@ -5,10 +5,13 @@ All notable changes are documented here, in [Keep a Changelog](https://keepachan
 ## [Unreleased]
 
 ### Changed
+
 - README covers common questions
 
 ### Added
+
 - `explain` shows the permission decision for each subcommand.
 - `lint` reports nine kinds of ineffective or risky rule.
 - `explaining-permissions` skill and plugin manifest.
 - Plugin icon referenced in the manifest.
+- `explain` strips leading environment-variable assignments before matching: allow rules see past known-safe variables (`NODE_ENV`, `LANG`, `NO_COLOR`), deny and ask rules see past any assignment.

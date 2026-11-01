@@ -73,7 +73,8 @@ class WrapperTest(unittest.TestCase):
     def test_safe_env_prefix_is_stripped(self):
             cases = {
             "NODE_ENV=test npm test": "npm test",
-            "NODE_ENV=test GOARCH=arm64 npm test": "npm test",
+            "NODE_ENV=test NO_COLOR=1 npm test": "npm test",
+            "LANG=C npm test": "npm test",
             'NODE_ENV="a b" npm test': "npm test",
             "NODE_ENV=test nohup npm test": "npm test",
         }
@@ -85,6 +86,7 @@ class WrapperTest(unittest.TestCase):
             "FOO=bar npm test",
             "NODE_ENV=$(whoami) npm test",  # dynamic value
             "NODE_ENV=`whoami` npm test",
+            "GOARCH=arm64 npm test",  # not named in the docs
             "NODE_ENV=test",  # bare assignment
             "npm test --flag=x",
             "--flag=x npm test",
