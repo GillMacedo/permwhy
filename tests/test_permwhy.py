@@ -116,6 +116,12 @@ class WrapperTest(unittest.TestCase):
         command = "NODE_ENV=test npm test"
         self.assertEqual(permwhy.strip_wrappers(command, env="none"), command)
 
+    def test_escaped_space_stays_inside_the_assignment_value(self):
+        # The shell runs `rm -rf x` with LANG="a git".
+        self.assertEqual(permwhy.strip_wrappers(r"LANG=a\ git rm -rf x"), "rm -rf x")
+        self.assertEqual(permwhy.strip_wrappers(r"FOO=a\ b rm -rf x", env="all"), "rm -rf x")
+        # FOO is not a safe variable, so the allow side leaves it alone.
+        self.assertEqual(permwhy.strip_wrappers(r"FOO=a\ b rm -rf x"), r"FOO=a\ b rm -rf x")
 
 class MatchTest(unittest.TestCase):
     def test_word_boundary(self):
@@ -183,6 +189,31 @@ class ExplainTest(unittest.TestCase):
     def test_ask_matches_past_any_env_prefix_in_chain(self):
         result = permwhy.explain("FOO=bar git push && npm test", rules(ask=["Bash(git push *)"]))
         self.assertEqual(result.decision, "ask")
+    
+    def test_escaped_space_cannot_hide_a_denied_command(self):
+        both = rules(allow=["Bash(git *)"], deny=["Bash(rm *)"])
+        self.assertEqual(permwhy.explain(r"LANG=a\ git rm -rf x", both).decision, "deny")
+        self.assertEqual(permwhy.explain(r"FOO=a\ b rm -rf x", both).decision, "deny")
+        allow_only = rules(allow=["Bash(git *)"])
+        self.assertEqual(permwhy.explain(r"LANG=a\ git rm -rf x", allow_only).decision, "prompt")
+
+    def test_deny_rule_that_names_an_env_prefix_still_matches(self):
+        command = "NODE_ENV=production npm publish --tag x"
+        deny = rules(allow=["Bash(npm publish *)"], deny=["Bash(NODE_ENV=production npm publish *)"])
+        self.assertEqual(permwhy.explain(command, deny).decision, "deny")
+
+    def test_ask_rule_that_names_an_env_prefix_still_matches(self):
+        command = "NODE_ENV=production npm publish --tag x"
+        ask = rules(allow=["Bash(npm publish *)"], ask=["Bash(NODE_ENV=production npm publish *)"])
+        self.assertEqual(permwhy.explain(command, ask).decision, "ask")
+
+    def test_deny_rule_on_a_bare_prefix_still_matches(self):
+        both = rules(allow=["Bash(git *)"], deny=["Bash(FOO=bar *)"])
+        self.assertEqual(permwhy.explain("FOO=bar git status", both).decision, "deny")
+
+    def test_allow_rule_that_names_an_env_prefix_still_matches(self):
+        allow = rules(allow=["Bash(NODE_ENV=test npm test)"])
+        self.assertEqual(permwhy.explain("NODE_ENV=test npm test", allow).decision, "allow")
 
     def test_non_bash_rules_are_ignored(self):
         self.assertEqual(permwhy.explain("ls", rules(allow=["Read(./*)"])).decision, "prompt")

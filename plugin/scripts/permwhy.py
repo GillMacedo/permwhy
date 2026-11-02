@@ -28,7 +28,11 @@ ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 # Claude Code does not publish the full list of "known-safe" variables.
 # These are the ones its docs name in examples; extend only with evidence.
 SAFE_ENV_VARS = frozenset({"NODE_ENV", "LANG", "NO_COLOR"})
-RAW_WORD = re.compile(r"(?:[^\s'\"]+|'[^']*'|\"(?:[^\"\\]|\\.)*\")+")
+# One shell word: plain characters, backslash-escaped characters (so `a\ b`
+# stays one word), quoted strings, and a lone trailing backslash.
+_WORD = r"(?:\\.|[^\s'\"\\]+|'[^']*'|\"(?:[^\"\\]|\\.)*\"|\\)+"
+RAW_WORD = re.compile(_WORD, re.DOTALL)
+WORD_AND_SPACE = re.compile(_WORD + r"\s*", re.DOTALL)
 
 
 @dataclass
@@ -191,7 +195,7 @@ def _normalize(subcommand):
         words.pop(0)
     if not words or words[0] in TRAILING_ONLY or words[0] in ("for", "case"):
         return ""
-    return strip_wrappers(" ".join(words))
+    return strip_wrappers(" ".join(words), env="none")
 
 
 def _strip_env_prefix(command, env):
@@ -252,7 +256,7 @@ def strip_wrappers(command, env="safe"):
 def _drop_words(command, count):
     rest = command.lstrip()
     for _ in range(count):
-        match = re.match(r"(?:[^\s'\"]+|'[^']*'|\"(?:[^\"\\]|\\.)*\")+\s*", rest)
+        match = WORD_AND_SPACE.match(rest)
         if not match:
             return rest
         rest = rest[match.end() :]
@@ -314,15 +318,29 @@ def _first_match(rules, kind, command):
     return None
 
 
+def _match_with_env_forms(rules, kind, text):
+    """Check the command as written first, then with its env prefix stripped.
+
+    A rule can name a prefix itself (`Bash(NODE_ENV=production npm publish *)`),
+    so stripping may only add matches, never remove them. Allow strips only
+    known-safe variables; deny and ask strip any assignment.
+    """
+    stripped = strip_wrappers(text, env="safe" if kind == "allow" else "all")
+    for form in dict.fromkeys((text, stripped)):
+        rule = _first_match(rules, kind, form)
+        if rule:
+            return rule
+    return None
+
+
 def explain(command, rules):
     top, nested, parseable = split_command(command)
     subcommands = []
     for text, is_nested in [(c, False) for c in top] + [(c, True) for c in nested]:
         item = Subcommand(text, nested=is_nested)
-        strict = strip_wrappers(text, env="all")  # deny/ask see past any env prefix
         # Docs: deny, then ask, then allow. Rule specificity doesn't change the order.
         for kind, label in (("deny", "deny"), ("ask", "ask"), ("allow", "allow")):
-            rule = _first_match(rules, kind, strict if kind != "allow" else text)
+            rule = _match_with_env_forms(rules, kind, text)
             if rule:
                 item.decision, item.rule, item.source = label, rule.text, rule.source
                 break
