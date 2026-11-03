@@ -66,6 +66,8 @@ Try both commands on the rules in `examples/settings.json`.
 
 `permwhy` follows [Claude Code's documented permission behavior](https://code.claude.com/docs/en/permissions), but it is a separate approximation, so Claude Code has the final say. It doesn't know Claude Code's built-in read-only list, managed settings, or auto mode's classifier decisions. Permission rules also aren't a security boundary: use a sandbox for that.
 
+It doesn't parse shell syntax in full. For example, an expanded value that contains spaces in a leading assignment, such as `FOO=$(echo a) rm -rf x`, isn't split correctly, so a deny rule like `Bash(rm *)` doesn't match it and `explain` returns `prompt` even though Claude Code's docs say deny rules match past any leading assignment.
+
 ## FAQ
 
 **Why does Claude Code keep asking for permission?** Often one part of a compound command has no matching rule. `permwhy explain` shows the decision for each part.

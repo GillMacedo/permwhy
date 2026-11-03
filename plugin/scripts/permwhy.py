@@ -208,8 +208,8 @@ def _strip_env_prefix(command, env):
         if not match:
             break
         name, value = word[: match.end() - 1], word[match.end() :]
-        if env == "safe" and any(char in value for char in "$`("):
-            break  # allow side: a dynamic value can't be judged statically
+        if env == "safe" and any(char in value for char in "$`(<>"):
+            break  # allow side: dynamic values and redirections can't be judged statically
         if env == "safe" and name not in SAFE_ENV_VARS:
             break
         count += 1

@@ -86,6 +86,9 @@ class WrapperTest(unittest.TestCase):
             "FOO=bar npm test",
             "NODE_ENV=$(whoami) npm test",  # dynamic value
             "NODE_ENV=`whoami` npm test",
+            "NODE_ENV=x>~/.bashrc npm test",  # redirection in the value
+            "LANG=C>f npm test",
+            "NODE_ENV=x<in npm test",
             "GOARCH=arm64 npm test",  # not named in the docs
             "NODE_ENV=test",  # bare assignment
             "npm test --flag=x",
@@ -214,6 +217,19 @@ class ExplainTest(unittest.TestCase):
     def test_allow_rule_that_names_an_env_prefix_still_matches(self):
         allow = rules(allow=["Bash(NODE_ENV=test npm test)"])
         self.assertEqual(permwhy.explain("NODE_ENV=test npm test", allow).decision, "allow")
+        
+    def test_redirection_in_env_value_is_not_approved_by_allow(self):
+        allow = rules(allow=["Bash(npm test)"])
+        for command in (
+            "NODE_ENV=x>~/.bashrc npm test",
+            "LANG=C>f npm test",
+            "NODE_ENV=x<in npm test",
+        ):
+            self.assertEqual(permwhy.explain(command, allow).decision, "prompt", command)
+
+    def test_deny_matches_past_env_value_with_redirection(self):
+        deny = rules(deny=["Bash(rm *)"])
+        self.assertEqual(permwhy.explain("FOO=x>f rm -rf x", deny).decision, "deny")
 
     def test_non_bash_rules_are_ignored(self):
         self.assertEqual(permwhy.explain("ls", rules(allow=["Read(./*)"])).decision, "prompt")
