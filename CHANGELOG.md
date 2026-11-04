@@ -4,6 +4,8 @@ All notable changes are documented here, in [Keep a Changelog](https://keepachan
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-04
+
 ### Added
 
 - `explain` strips leading environment-variable assignments before matching: allow rules see past known-safe variables (`NODE_ENV`, `LANG`, `NO_COLOR`), deny and ask rules see past any assignment.
