@@ -24,6 +24,15 @@ INTERPRETERS = {"python", "python3", "node", "ruby", "perl", "bash", "sh", "zsh"
 RUNNERS = ("npx", "docker exec", "docker run", "devbox run", "uv run", "pnpm dlx", "uvx")
 PACKAGE_RUNS = ("npm run", "pnpm run", "yarn run", "bun run", "make")
 RULE_PATTERN = re.compile(r"^([A-Za-z][A-Za-z0-9_]*)(?:\((.*)\))?$", re.DOTALL)
+ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+# Claude Code does not publish the full list of "known-safe" variables.
+# These are the ones its docs name in examples; extend only with evidence.
+SAFE_ENV_VARS = frozenset({"NODE_ENV", "LANG", "NO_COLOR"})
+# One shell word: plain characters, backslash-escaped characters (so `a\ b`
+# stays one word), quoted strings, and a lone trailing backslash.
+_WORD = r"(?:\\.|[^\s'\"\\]+|'[^']*'|\"(?:[^\"\\]|\\.)*\"|\\)+"
+RAW_WORD = re.compile(_WORD, re.DOTALL)
+WORD_AND_SPACE = re.compile(_WORD + r"\s*", re.DOTALL)
 
 
 @dataclass
@@ -186,10 +195,32 @@ def _normalize(subcommand):
         words.pop(0)
     if not words or words[0] in TRAILING_ONLY or words[0] in ("for", "case"):
         return ""
-    return strip_wrappers(" ".join(words))
+    return strip_wrappers(" ".join(words), env="none")
 
 
-def strip_wrappers(command):
+def _strip_env_prefix(command, env):
+    """Drop leading NAME=value words. env: "safe" (allow rules), "all" (deny/ask), "none"."""
+    if env == "none":
+        return command
+    count = 0
+    for word in RAW_WORD.findall(command):
+        match = ENV_ASSIGNMENT.match(word)
+        if not match:
+            break
+        name, value = word[: match.end() - 1], word[match.end() :]
+        if env == "safe" and any(char in value for char in "$`(<>"):
+            break  # allow side: dynamic values and redirections can't be judged statically
+        if env == "safe" and name not in SAFE_ENV_VARS:
+            break
+        count += 1
+    if count == 0:
+        return command
+    rest = _drop_words(command, count).strip()
+    return rest or command  # a bare assignment stays as written
+
+
+def strip_wrappers(command, env="safe"):
+    command = _strip_env_prefix(command, env)
     while True:
         try:
             words = shlex.split(command)
@@ -225,7 +256,7 @@ def strip_wrappers(command):
 def _drop_words(command, count):
     rest = command.lstrip()
     for _ in range(count):
-        match = re.match(r"(?:[^\s'\"]+|'[^']*'|\"(?:[^\"\\]|\\.)*\")+\s*", rest)
+        match = WORD_AND_SPACE.match(rest)
         if not match:
             return rest
         rest = rest[match.end() :]
@@ -287,6 +318,21 @@ def _first_match(rules, kind, command):
     return None
 
 
+def _match_with_env_forms(rules, kind, text):
+    """Check the command as written first, then with its env prefix stripped.
+
+    A rule can name a prefix itself (`Bash(NODE_ENV=production npm publish *)`),
+    so stripping may only add matches, never remove them. Allow strips only
+    known-safe variables; deny and ask strip any assignment.
+    """
+    stripped = strip_wrappers(text, env="safe" if kind == "allow" else "all")
+    for form in dict.fromkeys((text, stripped)):
+        rule = _first_match(rules, kind, form)
+        if rule:
+            return rule
+    return None
+
+
 def explain(command, rules):
     top, nested, parseable = split_command(command)
     subcommands = []
@@ -294,7 +340,7 @@ def explain(command, rules):
         item = Subcommand(text, nested=is_nested)
         # Docs: deny, then ask, then allow. Rule specificity doesn't change the order.
         for kind, label in (("deny", "deny"), ("ask", "ask"), ("allow", "allow")):
-            rule = _first_match(rules, kind, text)
+            rule = _match_with_env_forms(rules, kind, text)
             if rule:
                 item.decision, item.rule, item.source = label, rule.text, rule.source
                 break

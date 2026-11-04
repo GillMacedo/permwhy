@@ -7,6 +7,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "plugin" / "scripts"))
 
@@ -69,6 +70,62 @@ class WrapperTest(unittest.TestCase):
         self.assertEqual(permwhy.strip_wrappers("npx rm -rf x"), "npx rm -rf x")
 
 
+    def test_safe_env_prefix_is_stripped(self):
+            cases = {
+            "NODE_ENV=test npm test": "npm test",
+            "NODE_ENV=test NO_COLOR=1 npm test": "npm test",
+            "LANG=C npm test": "npm test",
+            'NODE_ENV="a b" npm test': "npm test",
+            "NODE_ENV=test nohup npm test": "npm test",
+        }
+            for given, want in cases.items():
+                self.assertEqual(permwhy.strip_wrappers(given), want, given)
+
+    def test_other_env_prefix_is_kept_for_allow(self):
+        for command in (
+            "FOO=bar npm test",
+            "NODE_ENV=$(whoami) npm test",  # dynamic value
+            "NODE_ENV=`whoami` npm test",
+            "NODE_ENV=x>~/.bashrc npm test",  # redirection in the value
+            "LANG=C>f npm test",
+            "NODE_ENV=x<in npm test",
+            "GOARCH=arm64 npm test",  # not named in the docs
+            "NODE_ENV=test",  # bare assignment
+            "npm test --flag=x",
+            "--flag=x npm test",
+        ):
+            self.assertEqual(permwhy.strip_wrappers(command), command, command)
+            
+    def test_env_after_wrapper_is_not_a_prefix(self):
+            # nohup is stripped, but an assignment after it is not a prefix any more
+            self.assertEqual(
+                permwhy.strip_wrappers("nohup NODE_ENV=test npm test"),
+                "NODE_ENV=test npm test",
+            )
+
+    def test_env_all_strips_any_assignment(self):
+        cases = {
+            "FOO=$HOME rm x": "rm x",
+            "FOO=$(whoami) rm x": "rm x",
+            "FOO=bar npm test": "npm test",
+            "A=1 B=2 npm test": "npm test",
+            "FOO=bar nohup npm test": "npm test",
+            "FOO=bar": "FOO=bar",
+        }
+        for given, want in cases.items():
+            self.assertEqual(permwhy.strip_wrappers(given, env="all"), want, given)
+
+    def test_env_none_keeps_prefix(self):
+        command = "NODE_ENV=test npm test"
+        self.assertEqual(permwhy.strip_wrappers(command, env="none"), command)
+
+    def test_escaped_space_stays_inside_the_assignment_value(self):
+        # The shell runs `rm -rf x` with LANG="a git".
+        self.assertEqual(permwhy.strip_wrappers(r"LANG=a\ git rm -rf x"), "rm -rf x")
+        self.assertEqual(permwhy.strip_wrappers(r"FOO=a\ b rm -rf x", env="all"), "rm -rf x")
+        # FOO is not a safe variable, so the allow side leaves it alone.
+        self.assertEqual(permwhy.strip_wrappers(r"FOO=a\ b rm -rf x"), r"FOO=a\ b rm -rf x")
+
 class MatchTest(unittest.TestCase):
     def test_word_boundary(self):
         self.assertTrue(permwhy.pattern_matches("ls *", "ls -la"))
@@ -113,6 +170,66 @@ class ExplainTest(unittest.TestCase):
 
     def test_wrapper_is_stripped_before_matching(self):
         self.assertEqual(permwhy.explain("timeout 30 npm test", rules(allow=["Bash(npm test)"])).decision, "allow")
+
+
+    def test_allow_matches_past_safe_env_prefix(self):
+        result = permwhy.explain("NODE_ENV=test npm test", rules(allow=["Bash(npm test *)"]))
+        self.assertEqual(result.decision, "allow")
+
+    def test_allow_does_not_match_past_other_env_prefix(self):
+        result = permwhy.explain("FOO=bar npm test", rules(allow=["Bash(npm test *)"]))
+        self.assertEqual(result.decision, "prompt")
+
+    def test_deny_matches_past_any_env_prefix(self):
+        deny = rules(deny=["Bash(rm *)"])
+        self.assertEqual(permwhy.explain("FOO=bar rm -rf tmp/", deny).decision, "deny")
+        self.assertEqual(permwhy.explain('echo "$(FOO=bar rm x)"', deny).decision, "deny")
+        
+    def test_deny_matches_past_env_prefix_with_expanded_value(self):
+        deny = rules(deny=["Bash(rm *)"])
+        self.assertEqual(permwhy.explain("FOO=$(whoami) rm -rf x", deny).decision, "deny")
+
+    def test_ask_matches_past_any_env_prefix_in_chain(self):
+        result = permwhy.explain("FOO=bar git push && npm test", rules(ask=["Bash(git push *)"]))
+        self.assertEqual(result.decision, "ask")
+    
+    def test_escaped_space_cannot_hide_a_denied_command(self):
+        both = rules(allow=["Bash(git *)"], deny=["Bash(rm *)"])
+        self.assertEqual(permwhy.explain(r"LANG=a\ git rm -rf x", both).decision, "deny")
+        self.assertEqual(permwhy.explain(r"FOO=a\ b rm -rf x", both).decision, "deny")
+        allow_only = rules(allow=["Bash(git *)"])
+        self.assertEqual(permwhy.explain(r"LANG=a\ git rm -rf x", allow_only).decision, "prompt")
+
+    def test_deny_rule_that_names_an_env_prefix_still_matches(self):
+        command = "NODE_ENV=production npm publish --tag x"
+        deny = rules(allow=["Bash(npm publish *)"], deny=["Bash(NODE_ENV=production npm publish *)"])
+        self.assertEqual(permwhy.explain(command, deny).decision, "deny")
+
+    def test_ask_rule_that_names_an_env_prefix_still_matches(self):
+        command = "NODE_ENV=production npm publish --tag x"
+        ask = rules(allow=["Bash(npm publish *)"], ask=["Bash(NODE_ENV=production npm publish *)"])
+        self.assertEqual(permwhy.explain(command, ask).decision, "ask")
+
+    def test_deny_rule_on_a_bare_prefix_still_matches(self):
+        both = rules(allow=["Bash(git *)"], deny=["Bash(FOO=bar *)"])
+        self.assertEqual(permwhy.explain("FOO=bar git status", both).decision, "deny")
+
+    def test_allow_rule_that_names_an_env_prefix_still_matches(self):
+        allow = rules(allow=["Bash(NODE_ENV=test npm test)"])
+        self.assertEqual(permwhy.explain("NODE_ENV=test npm test", allow).decision, "allow")
+        
+    def test_redirection_in_env_value_is_not_approved_by_allow(self):
+        allow = rules(allow=["Bash(npm test)"])
+        for command in (
+            "NODE_ENV=x>~/.bashrc npm test",
+            "LANG=C>f npm test",
+            "NODE_ENV=x<in npm test",
+        ):
+            self.assertEqual(permwhy.explain(command, allow).decision, "prompt", command)
+
+    def test_deny_matches_past_env_value_with_redirection(self):
+        deny = rules(deny=["Bash(rm *)"])
+        self.assertEqual(permwhy.explain("FOO=x>f rm -rf x", deny).decision, "deny")
 
     def test_non_bash_rules_are_ignored(self):
         self.assertEqual(permwhy.explain("ls", rules(allow=["Read(./*)"])).decision, "prompt")

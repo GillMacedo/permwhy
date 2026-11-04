@@ -50,21 +50,23 @@ Try both commands on the rules in `examples/settings.json`.
 
     $ python3 plugin/scripts/permwhy.py --settings examples/settings.json --sarif lint > permwhy.sarif
 
-| Code | Finding |
-|---|---|
-| PW001 | Not a valid rule |
-| PW002 | Duplicate rule |
-| PW003 | Blanket Bash allow |
-| PW004 | Wildcarded interpreter |
-| PW005 | Wildcarded package-manager run |
-| PW006 | Runner that matches whatever runs inside it |
-| PW007 | Allow rule shadowed by a deny rule |
+| Code  | Finding                                         |
+| ----- | ----------------------------------------------- |
+| PW001 | Not a valid rule                                |
+| PW002 | Duplicate rule                                  |
+| PW003 | Blanket Bash allow                              |
+| PW004 | Wildcarded interpreter                          |
+| PW005 | Wildcarded package-manager run                  |
+| PW006 | Runner that matches whatever runs inside it     |
+| PW007 | Allow rule shadowed by a deny rule              |
 | PW008 | Deny or ask rule that only matches command text |
-| PW009 | Fragile URL pattern |
+| PW009 | Fragile URL pattern                             |
 
 ## Limits
 
 `permwhy` follows [Claude Code's documented permission behavior](https://code.claude.com/docs/en/permissions), but it is a separate approximation, so Claude Code has the final say. It doesn't know Claude Code's built-in read-only list, managed settings, or auto mode's classifier decisions. Permission rules also aren't a security boundary: use a sandbox for that.
+
+It doesn't parse shell syntax in full. For example, an expanded value that contains spaces in a leading assignment, such as `FOO=$(echo a) rm -rf x`, isn't split correctly, so a deny rule like `Bash(rm *)` doesn't match it and `explain` returns `prompt` even though Claude Code's docs say deny rules match past any leading assignment.
 
 ## FAQ
 
@@ -76,7 +78,6 @@ Try both commands on the rules in `examples/settings.json`.
 
 Contributions are welcome, from people and from people working with AI agents. See [CONTRIBUTING.md](CONTRIBUTING.md). Good first issues:
 
-- Handle `FOO=bar command` environment prefixes
 - Explain `Read` and `Edit` rules as well as `Bash`
 - Add SARIF output so `lint` can report in GitHub code scanning
 - Support `PowerShell(...)` rules
