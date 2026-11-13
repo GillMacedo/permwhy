@@ -2,6 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(git *)",
+      "Read(src/**)",
+      "Edit(src/**)",
       "Bash(python *)",
       "Bash(aws s3 ls)",
       "Bash(curl http://github.com/ *)"

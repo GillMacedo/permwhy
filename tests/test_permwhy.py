@@ -21,6 +21,149 @@ def rules(allow=(), ask=(), deny=()):
     return result
 
 
+class PathPatternTest(unittest.TestCase):
+    def test_home_relative_path_pattern(self):
+        home = Path.home()
+        cwd = Path("C:/project")
+
+        self.assertTrue(
+            permwhy.path_pattern_matches(
+                "~/.ssh/**",
+                str(home / ".ssh" / "config"),
+                "allow",
+                cwd=cwd,
+            )
+        )
+
+    def test_filesystem_absolute_path_pattern(self):
+        cwd = Path("C:/project")
+
+        self.assertTrue(
+            permwhy.path_pattern_matches(
+                "//**/.env",
+                "D:/project/.env",
+                "deny",
+                cwd=cwd,
+            )
+        )
+
+    def test_source_relative_path_uses_project_root(self):
+        cwd = Path("C:/project")
+        source = "C:/project/.claude/settings.json"
+
+        self.assertTrue(
+            permwhy.path_pattern_matches(
+                "/src/**",
+                "C:/project/src/main.py",
+                "allow",
+                source=source,
+                cwd=cwd,
+            )
+        )
+
+        self.assertFalse(
+            permwhy.path_pattern_matches(
+                "/src/**",
+                "C:/other/src/main.py",
+                "allow",
+                source=source,
+                cwd=cwd,
+            )
+        )
+
+    def test_custom_settings_source_relative_path(self):
+        cwd = Path("C:/project")
+        source = "C:/custom/settings.json"
+
+        self.assertTrue(
+            permwhy.path_pattern_matches(
+                "/src/**",
+                "C:/custom/src/main.py",
+                "allow",
+                source=source,
+                cwd=cwd,
+            )
+        )
+
+        self.assertFalse(
+            permwhy.path_pattern_matches(
+                "/src/**",
+                "C:/project/src/main.py",
+                "allow",
+                source=source,
+                cwd=cwd,
+            )
+        )
+
+    def test_windows_drive_absolute_pattern(self):
+        cwd = Path("C:/project")
+
+        self.assertTrue(
+            permwhy.path_pattern_matches(
+                "D:/project/secrets/**",
+                "D:/project/secrets/key.txt",
+                "deny",
+                cwd=cwd,
+            )
+        )
+
+    def test_user_settings_source_relative_path(self):
+        cwd = Path("C:/project")
+        source = str(Path.home() / ".claude" / "settings.json")
+        home = Path.home()
+
+        self.assertTrue(
+            permwhy.path_pattern_matches(
+                "/projects/**",
+                str(home / ".claude" / "projects" / "config.json"),
+                "allow",
+                source=source,
+                cwd=cwd,
+                )
+        )
+
+
+    def test_windows_paths_are_case_insensitive(self):
+        self.assertTrue(
+            permwhy.path_pattern_matches(
+                "C:/PROJECT/SRC/**",
+                "c:/project/src/Main.py",
+                "allow",
+                cwd="C:/project",
+            )
+        )
+
+    def test_windows_paths_normalize_dot_segments(self):
+        self.assertTrue(
+            permwhy.path_pattern_matches(
+                "C:/project/src/**",
+                "c:/project/tmp/../src/./main.py",
+                "allow",
+                cwd="C:/project",
+            )
+        )
+
+    def test_unc_paths_are_normalized(self):
+        self.assertTrue(
+            permwhy.path_pattern_matches(
+                r"\\\\server\\share\\src\\**",
+                r"\\\\SERVER\\SHARE\\src\\main.py",
+                "allow",
+                cwd="C:/project",
+            )
+        )
+
+    def test_posix_paths_remain_case_sensitive(self):
+        self.assertFalse(
+            permwhy.path_pattern_matches(
+                "/project/src/**",
+                "/project/SRC/main.py",
+                "allow",
+                cwd="/project",
+            )
+        )
+
+
 class SplitCommandTest(unittest.TestCase):
     def test_every_documented_separator(self):
         top, _, parseable = permwhy.split_command("a && b || c ; d | e |& f & g\nh")
@@ -95,7 +238,7 @@ class WrapperTest(unittest.TestCase):
             "--flag=x npm test",
         ):
             self.assertEqual(permwhy.strip_wrappers(command), command, command)
-            
+
     def test_env_after_wrapper_is_not_a_prefix(self):
             # nohup is stripped, but an assignment after it is not a prefix any more
             self.assertEqual(
@@ -184,7 +327,7 @@ class ExplainTest(unittest.TestCase):
         deny = rules(deny=["Bash(rm *)"])
         self.assertEqual(permwhy.explain("FOO=bar rm -rf tmp/", deny).decision, "deny")
         self.assertEqual(permwhy.explain('echo "$(FOO=bar rm x)"', deny).decision, "deny")
-        
+
     def test_deny_matches_past_env_prefix_with_expanded_value(self):
         deny = rules(deny=["Bash(rm *)"])
         self.assertEqual(permwhy.explain("FOO=$(whoami) rm -rf x", deny).decision, "deny")
@@ -192,7 +335,7 @@ class ExplainTest(unittest.TestCase):
     def test_ask_matches_past_any_env_prefix_in_chain(self):
         result = permwhy.explain("FOO=bar git push && npm test", rules(ask=["Bash(git push *)"]))
         self.assertEqual(result.decision, "ask")
-    
+
     def test_escaped_space_cannot_hide_a_denied_command(self):
         both = rules(allow=["Bash(git *)"], deny=["Bash(rm *)"])
         self.assertEqual(permwhy.explain(r"LANG=a\ git rm -rf x", both).decision, "deny")
@@ -217,7 +360,7 @@ class ExplainTest(unittest.TestCase):
     def test_allow_rule_that_names_an_env_prefix_still_matches(self):
         allow = rules(allow=["Bash(NODE_ENV=test npm test)"])
         self.assertEqual(permwhy.explain("NODE_ENV=test npm test", allow).decision, "allow")
-        
+
     def test_redirection_in_env_value_is_not_approved_by_allow(self):
         allow = rules(allow=["Bash(npm test)"])
         for command in (
@@ -231,8 +374,101 @@ class ExplainTest(unittest.TestCase):
         deny = rules(deny=["Bash(rm *)"])
         self.assertEqual(permwhy.explain("FOO=x>f rm -rf x", deny).decision, "deny")
 
-    def test_non_bash_rules_are_ignored(self):
-        self.assertEqual(permwhy.explain("ls", rules(allow=["Read(./*)"])).decision, "prompt")
+    def test_read_allow_rule_matches_file_path(self):
+        result = permwhy.explain(
+            "./src/main.py",
+            rules(allow=["Read(./src/**)"]),
+            tool="Read",
+        )
+        self.assertEqual(result.decision, "allow")
+
+    def test_edit_allow_rule_matches_file_path(self):
+        result = permwhy.explain(
+            "./src/main.py",
+            rules(allow=["Edit(./src/**)"]),
+            tool="Edit",
+        )
+        self.assertEqual(result.decision, "allow")
+
+    def test_read_rule_does_not_match_edit_tool(self):
+        result = permwhy.explain(
+            "./src/main.py",
+            rules(allow=["Read(./src/**)"]),
+            tool="Edit",
+        )
+        self.assertEqual(result.decision, "prompt")
+
+    def test_deny_beats_allow_for_read_tool(self):
+        result = permwhy.explain(
+            "./src/main.py",
+            rules(
+                allow=["Read(./src/**)"],
+                deny=["Read(./src/main.py)"],
+            ),
+            tool="Read",
+        )
+        self.assertEqual(result.decision, "deny")
+
+    def test_ask_beats_allow_for_read_tool(self):
+        result = permwhy.explain(
+            "./src/main.py",
+            rules(
+                allow=["Read(./src/**)"],
+                ask=["Read(./src/main.py)"],
+            ),
+            tool="Read",
+        )
+        self.assertEqual(result.decision, "ask")
+
+    def test_read_single_star_does_not_match_nested_path(self):
+        result = permwhy.explain(
+            "src/utils/main.py",
+            rules(allow=["Read(src/*.py)"]),
+            tool="Read",
+        )
+        self.assertEqual(result.decision, "prompt")
+
+    def test_read_double_star_matches_direct_and_nested_paths(self):
+        allow = rules(allow=["Read(src/**/*.py)"])
+
+        direct = permwhy.explain("src/main.py", allow, tool="Read")
+        nested = permwhy.explain("src/utils/main.py", allow, tool="Read")
+
+        self.assertEqual(direct.decision, "allow")
+        self.assertEqual(nested.decision, "allow")
+
+    def test_src_double_star_has_same_rooting_for_all_rule_kinds(self):
+        cases = (
+            ("allow", "allow"),
+            ("deny", "deny"),
+            ("ask", "ask"),
+        )
+
+        for kind, expected in cases:
+            with self.subTest(kind=kind):
+                rule_set = rules(
+                    **{kind: ["Read(src/**)"]}
+                )
+
+                direct = permwhy.explain(
+                    "src/main.py",
+                    rule_set,
+                    tool="Read",
+                )
+                nested = permwhy.explain(
+                    "src/utils/main.py",
+                    rule_set,
+                    tool="Read",
+                )
+                elsewhere = permwhy.explain(
+                    "packages/app/src/main.py",
+                    rule_set,
+                    tool="Read",
+                )
+
+                self.assertEqual(direct.decision, expected)
+                self.assertEqual(nested.decision, expected)
+                self.assertEqual(elsewhere.decision, "prompt")
 
 
 class LintTest(unittest.TestCase):
@@ -279,6 +515,39 @@ class CliTest(unittest.TestCase):
         code, output = self.run_cli('{"permissions":{"allow":["Bash(ls *)"]}}', "--json", "explain", "ls -la")
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(output)["decision"], "allow")
+
+    def test_explain_read_tool(self):
+        code, output = self.run_cli(
+            '{"permissions":{"allow":["Read(./src/**)"]}}',
+            "--json", "explain", "--tool", "Read", "./src/main.py",
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(output)["decision"], "allow")
+
+
+    def test_explain_edit_tool(self):
+        code, output = self.run_cli(
+            '{"permissions":{"allow":["Edit(./src/**)"]}}',
+            "--json", "explain", "--tool", "Edit", "./src/main.py",
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(output)["decision"], "allow")
+
+    def test_explain_function_rejects_invalid_tool(self):
+        with self.assertRaises(ValueError):
+            permwhy.explain(
+                "./src/main.py",
+                [],
+                tool="Write",
+            )
+
+    def test_explain_rejects_invalid_tool(self):
+        with self.assertRaises(SystemExit) as error:
+            self.run_cli(
+                '{"permissions":{}}',
+                "--json", "explain", "--tool", "Write", "./src/main.py",
+            )
+        self.assertEqual(error.exception.code, 2)
 
     def test_lint_exit_codes(self):
         self.assertEqual(self.run_cli('{"permissions":{"allow":["Bash(*)"]}}', "lint")[0], 1)

@@ -8,6 +8,7 @@ not a security boundary, and Claude Code itself always has the final say.
 import argparse
 import fnmatch
 import json
+import posixpath
 import re
 import shlex
 import sys
@@ -41,6 +42,7 @@ class Rule:
     text: str
     source: str
     pattern: str | None = None
+    tool: str = "Bash"
 
 
 @dataclass
@@ -267,9 +269,17 @@ def parse_rule(kind, text, source):
     match = RULE_PATTERN.match(text.strip())
     if not match:
         return None
-    if match.group(1) != "Bash":
-        return Rule(kind, text, source, pattern=None)
-    return Rule(kind, text, source, pattern=match.group(2) if match.group(2) is not None else "*")
+
+    tool = match.group(1)
+    pattern = match.group(2) if match.group(2) is not None else "*"
+
+    return Rule(
+        kind,
+        text,
+        source,
+        pattern=pattern,
+        tool=tool,
+    )
 
 
 def pattern_matches(pattern, command):
@@ -283,6 +293,176 @@ def pattern_matches(pattern, command):
         return True
     translated = pattern.replace("[", "[[]").replace("?", "[?]")
     return fnmatch.fnmatchcase(command, translated)
+
+
+
+
+def _is_windows_path(path):
+    """Return whether a path uses Windows drive or UNC syntax."""
+    value = str(path)
+    return (
+        re.match(r"^[A-Za-z]:[\\/]", value) is not None
+        or value.startswith("\\\\")
+        or value.startswith("//")
+    )
+
+
+def _path_to_posix(path):
+    """Normalize Windows and POSIX paths to a comparable POSIX form."""
+    original = str(path)
+    value = original.replace("\\", "/")
+
+    # Windows drive paths: C:/foo -> /c/foo.
+    drive_match = re.match(r"^([A-Za-z]):/", value)
+    if drive_match:
+        return "/" + drive_match.group(1).lower() + value[2:]
+
+    # UNC paths: \\server\share\foo -> /unc/server/share/foo.
+    if value.startswith("//"):
+        unc_parts = [part for part in value[2:].split("/") if part]
+        if len(unc_parts) >= 2:
+            return posixpath.normpath(
+                posixpath.join("/unc", *unc_parts)
+            )
+
+    return value
+
+
+def _absolute_posix_path(path, cwd):
+    """Resolve a path against cwd and return its normalized POSIX form."""
+    value = _path_to_posix(path)
+
+    if not value.startswith("/"):
+        value = posixpath.join(cwd, value)
+
+    return posixpath.normpath(value)
+
+
+def _settings_source_root(source, cwd, home):
+    """Return the base directory used by source-relative permission patterns."""
+    source_path = _absolute_posix_path(
+        Path(source).expanduser(),
+        cwd,
+    )
+
+    home_claude = posixpath.join(home, ".claude")
+    user_settings = posixpath.join(home_claude, "settings.json")
+
+    if source_path == user_settings:
+        return home_claude
+
+    source_dir = posixpath.dirname(source_path)
+    source_name = posixpath.basename(source_path)
+
+    if (
+        posixpath.basename(source_dir) == ".claude"
+        and source_name in {"settings.json", "settings.local.json"}
+    ):
+        return posixpath.dirname(source_dir)
+
+    return source_dir
+
+
+def path_pattern_matches(pattern, path, kind, source=None, cwd=None):
+    """Match Read/Edit paths using normalized glob-style path semantics."""
+    raw_pattern = str(pattern)
+    raw_path = str(path)
+
+    cwd_value = cwd if cwd is not None else Path.cwd()
+    cwd_posix = _absolute_posix_path(cwd_value, "/")
+    home = _absolute_posix_path(Path.home(), cwd_posix)
+
+    windows_semantics = (
+        _is_windows_path(raw_path)
+        or _is_windows_path(raw_pattern)
+        or _is_windows_path(cwd_value)
+    )
+
+    target = _absolute_posix_path(raw_path, cwd_posix)
+
+    # Expand home-relative paths.
+    if raw_path.replace("\\", "/").startswith("~/"):
+        target = posixpath.normpath(
+            posixpath.join(home, raw_path.replace("\\", "/")[2:])
+        )
+
+    pattern_slashes = raw_pattern.replace("\\", "/")
+
+    if pattern_slashes.startswith("~/"):
+        resolved_pattern = posixpath.join(
+            home,
+            pattern_slashes[2:],
+        )
+
+    # A pattern beginning with // is the explicit filesystem-absolute
+    # pattern syntax. A Windows UNC pattern is written with backslashes.
+    elif raw_pattern.startswith("\\\\"):
+        resolved_pattern = _path_to_posix(raw_pattern)
+
+    elif pattern_slashes.startswith("//"):
+        resolved_pattern = "/" + pattern_slashes.lstrip("/")
+
+    elif pattern_slashes.startswith("/"):
+        source_root = (
+            _settings_source_root(source, cwd_posix, home)
+            if source is not None
+            else cwd_posix
+        )
+        resolved_pattern = posixpath.join(
+            source_root,
+            pattern_slashes.lstrip("/"),
+        )
+
+    elif re.match(r"^[A-Za-z]:/", pattern_slashes):
+        resolved_pattern = _path_to_posix(pattern_slashes)
+
+    else:
+        relative_pattern = pattern_slashes.removeprefix("./")
+        resolved_pattern = posixpath.join(
+            cwd_posix,
+            relative_pattern,
+        )
+
+    # A pattern without a slash matches a filename at any depth
+    # beneath its selected base directory.
+    if (
+        "/" not in pattern_slashes
+        and not pattern_slashes.startswith("/")
+        and not pattern_slashes.startswith("~/")
+    ):
+        resolved_pattern = posixpath.join(
+            cwd_posix,
+            "**",
+            pattern_slashes,
+        )
+
+    # Windows paths are case-insensitive. POSIX paths remain case-sensitive.
+    if windows_semantics:
+        target = target.casefold()
+        resolved_pattern = resolved_pattern.casefold()
+
+    regex = []
+    i = 0
+
+    while i < len(resolved_pattern):
+        if resolved_pattern.startswith("**/", i):
+            # **/ matches zero or more directory levels.
+            regex.append("(?:.*/)?")
+            i += 3
+        elif resolved_pattern.startswith("**", i):
+            regex.append(".*")
+            i += 2
+        elif resolved_pattern[i] == "*":
+            regex.append("[^/]*")
+            i += 1
+        elif resolved_pattern[i] == "?":
+            regex.append("[^/]")
+            i += 1
+        else:
+            regex.append(re.escape(resolved_pattern[i]))
+            i += 1
+
+    return re.fullmatch("".join(regex), target) is not None
 
 
 def load_rules(paths):
@@ -311,29 +491,103 @@ def default_settings_paths():
     ]
 
 
-def _first_match(rules, kind, command):
+def _first_match(rules, kind, command, tool="Bash"):
     for rule in rules:
-        if rule.kind == kind and rule.pattern is not None and pattern_matches(rule.pattern, command):
+        if rule.kind != kind or rule.tool != tool or rule.pattern is None:
+            continue
+
+        if tool == "Bash":
+            matched = pattern_matches(rule.pattern, command)
+        else:
+            matched = path_pattern_matches(
+                          rule.pattern,
+                          command,
+                          kind,
+                          source=rule.source,
+                        )
+
+        if matched:
             return rule
+
     return None
 
 
-def _match_with_env_forms(rules, kind, text):
+def _match_with_env_forms(rules, kind, text, tool="Bash"):
     """Check the command as written first, then with its env prefix stripped.
 
-    A rule can name a prefix itself (`Bash(NODE_ENV=production npm publish *)`),
-    so stripping may only add matches, never remove them. Allow strips only
-    known-safe variables; deny and ask strip any assignment.
+    A rule can name a prefix itself, so stripping may only add matches.
     """
-    stripped = strip_wrappers(text, env="safe" if kind == "allow" else "all")
+    stripped = strip_wrappers(
+        text,
+        env="safe" if kind == "allow" else "all",
+    )
+
     for form in dict.fromkeys((text, stripped)):
-        rule = _first_match(rules, kind, form)
+        rule = _first_match(rules, kind, form, tool=tool)
         if rule:
             return rule
+
     return None
 
 
-def explain(command, rules):
+def explain(command, rules, tool="Bash"):
+    if tool not in {"Bash", "Read", "Edit"}:
+        raise ValueError(
+            f"Unsupported tool: {tool!r}. Expected Bash, Read, or Edit."
+        )
+
+    if tool != "Bash":
+        item = Subcommand(command)
+
+        for kind, label in (
+            ("deny", "deny"),
+            ("ask", "ask"),
+            ("allow", "allow"),
+        ):
+            rule = _first_match(
+                rules,
+                kind,
+                command,
+                tool=tool,
+            )
+
+            if rule:
+                item.decision = label
+                item.rule = rule.text
+                item.source = rule.source
+                break
+
+        if item.decision == "deny":
+            return Explanation(
+                command,
+                "deny",
+                "A subcommand matches a deny rule.",
+                [item],
+            )
+
+        if item.decision == "ask":
+            return Explanation(
+                command,
+                "ask",
+                "A subcommand matches an ask rule.",
+                [item],
+            )
+
+        if item.decision == "allow":
+            return Explanation(
+                command,
+                "allow",
+                "Every subcommand matches an allow rule.",
+                [item],
+            )
+
+        return Explanation(
+            command,
+            "prompt",
+            "No allow rule matches the file path.",
+            [item],
+        )
+
     top, nested, parseable = split_command(command)
     subcommands = []
     for text, is_nested in [(c, False) for c in top] + [(c, True) for c in nested]:
@@ -379,7 +633,7 @@ def lint(rules):
         if key in seen:
             add("PW002", f"Duplicate of the same rule in {seen[key]}.")
         seen.setdefault(key, rule.source)
-        if rule.pattern is None:
+        if rule.tool != "Bash" or rule.pattern is None:
             continue
 
         pattern = rule.pattern
@@ -460,7 +714,16 @@ def main(argv=None):
     output.add_argument("--json", action="store_true", help="print JSON")
     output.add_argument("--sarif", action="store_true", help="print SARIF 2.1.0 (lint only)")
     commands = parser.add_subparsers(dest="action", required=True)
-    explain_parser = commands.add_parser("explain", help="explain the decision for a command")
+    explain_parser = commands.add_parser(
+        "explain",
+        help="explain the decision for a command",
+    )
+    explain_parser.add_argument(
+        "--tool",
+        choices=("Bash", "Read", "Edit"),
+        default="Bash",
+        help="permission tool to evaluate (default: Bash)",
+    )
     explain_parser.add_argument("shell_command")
     commands.add_parser("lint", help="find ineffective or risky rules")
     args = parser.parse_args(argv)
@@ -475,7 +738,11 @@ def main(argv=None):
         return 2
 
     if args.action == "explain":
-        result = explain(args.shell_command, rules)
+        result = explain(
+            args.shell_command,
+            rules,
+            tool=args.tool,
+        )
         if args.json:
             print(json.dumps(asdict(result), indent=2))
         else:

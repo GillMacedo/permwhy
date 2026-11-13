@@ -38,6 +38,12 @@ Try both commands on the rules in `examples/settings.json`.
       allow    git status  <- Bash(git *) in examples/settings.json
       no rule  npm test
 
+**Why was this file read allowed?**
+
+    $ python3 plugin/scripts/permwhy.py --settings examples/settings.json explain --tool Read src/main.py
+    $ python3 plugin/scripts/permwhy.py --settings examples/settings.json explain --tool Edit src/main.py
+
+Use `--tool Read` or `--tool Edit` to explain file permission decisions. The default remains `Bash`.
 **Which rules have problems?** (excerpt)
 
     $ python3 plugin/scripts/permwhy.py --settings examples/settings.json lint
